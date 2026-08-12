@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "domnkrmntredaktor",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-08-12",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "domnkrmntredaktor-db",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "APP_ORIGIN": "http://localhost:5173",
+    "TELEGRAM_BOT_USERNAME": "domnekromantabot"
+  }
+}
