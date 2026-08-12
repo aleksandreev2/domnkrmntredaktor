@@ -11,9 +11,14 @@ function routeParts(pathname: string): string[] {
   return pathname.split('/').filter(Boolean);
 }
 
-function sameOrigin(request: Request, env: Env): boolean {
+function sameOrigin(request: Request): boolean {
   const origin = request.headers.get('origin');
-  return Boolean(origin && origin.replace(/\/$/, '') === env.APP_ORIGIN.replace(/\/$/, ''));
+  if (!origin) return false;
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
 }
 
 export default {
@@ -35,7 +40,7 @@ export default {
 
     if (request.method === 'GET' && url.pathname === '/api/auth/start') {
       try {
-        return await beginTelegramLogin(env);
+        return await beginTelegramLogin(request, env);
       } catch (error) {
         return json({ error: error instanceof Error ? error.message : 'Telegram login is unavailable' }, 503);
       }
@@ -56,7 +61,7 @@ export default {
     }
 
     if (request.method === 'POST' && url.pathname === '/api/auth/logout') {
-      if (!sameOrigin(request, env)) return json({ error: 'Invalid origin' }, 403);
+      if (!sameOrigin(request)) return json({ error: 'Invalid origin' }, 403);
       return logout(request, env);
     }
 
@@ -75,7 +80,7 @@ export default {
 
     if (request.method === 'POST' && url.pathname === '/api/admin/sync') {
       if (user.role !== 'admin') return json({ error: 'Admin access required' }, 403);
-      if (!sameOrigin(request, env)) return json({ error: 'Invalid origin' }, 403);
+      if (!sameOrigin(request)) return json({ error: 'Invalid origin' }, 403);
       try {
         return json({ ok: true, stats: await syncDrive(env) });
       } catch (error) {
@@ -141,7 +146,7 @@ export default {
     }
 
     if (request.method === 'POST' && url.pathname === '/api/suggestions') {
-      if (!sameOrigin(request, env)) return json({ error: 'Invalid origin' }, 403);
+      if (!sameOrigin(request)) return json({ error: 'Invalid origin' }, 403);
       const body = await request.json().catch(() => null) as null | {
         chapterId?: string;
         chapterVersionId?: string;

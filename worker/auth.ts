@@ -34,12 +34,12 @@ async function sha256Base64Url(value: string): Promise<string> {
   return bytesToBase64Url(new Uint8Array(digest));
 }
 
-function appOrigin(env: Env): string {
-  return env.APP_ORIGIN.replace(/\/$/, '');
+function appOrigin(request: Request): string {
+  return new URL(request.url).origin;
 }
 
-function callbackUrl(env: Env): string {
-  return `${appOrigin(env)}/api/auth/callback`;
+function callbackUrl(request: Request): string {
+  return `${appOrigin(request)}/api/auth/callback`;
 }
 
 function getCookie(request: Request, name: string): string | null {
@@ -52,13 +52,13 @@ function getCookie(request: Request, name: string): string | null {
   return null;
 }
 
-function sessionCookie(env: Env, token: string, maxAge = SESSION_TTL_SECONDS): string {
-  const secure = appOrigin(env).startsWith('https://') ? '; Secure' : '';
+function sessionCookie(request: Request, token: string, maxAge = SESSION_TTL_SECONDS): string {
+  const secure = appOrigin(request).startsWith('https://') ? '; Secure' : '';
   return `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secure}`;
 }
 
-function clearSessionCookie(env: Env): string {
-  return sessionCookie(env, '', 0);
+function clearSessionCookie(request: Request): string {
+  return sessionCookie(request, '', 0);
 }
 
 function requireTelegramConfig(env: Env): { clientId: string; clientSecret: string } {
@@ -72,7 +72,7 @@ export function isTelegramConfigured(env: Env): boolean {
   return Boolean(env.TELEGRAM_CLIENT_ID && env.TELEGRAM_CLIENT_SECRET);
 }
 
-export async function beginTelegramLogin(env: Env): Promise<Response> {
+export async function beginTelegramLogin(request: Request, env: Env): Promise<Response> {
   const { clientId } = requireTelegramConfig(env);
   const state = randomToken(32);
   const codeVerifier = randomToken(48);
@@ -86,7 +86,7 @@ export async function beginTelegramLogin(env: Env): Promise<Response> {
 
   const url = new URL(TELEGRAM_AUTH_URL);
   url.searchParams.set('client_id', clientId);
-  url.searchParams.set('redirect_uri', callbackUrl(env));
+  url.searchParams.set('redirect_uri', callbackUrl(request));
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('scope', 'openid profile');
   url.searchParams.set('state', state);
@@ -103,7 +103,7 @@ export async function finishTelegramLogin(request: Request, env: Env): Promise<R
   const state = url.searchParams.get('state');
   const error = url.searchParams.get('error');
 
-  if (error) return Response.redirect(`${appOrigin(env)}/?auth=error`, 302);
+  if (error) return Response.redirect(`${appOrigin(request)}/?auth=error`, 302);
   if (!code || !state) return new Response('Invalid Telegram callback', { status: 400 });
 
   const pending = await env.DB.prepare(
@@ -120,7 +120,7 @@ export async function finishTelegramLogin(request: Request, env: Env): Promise<R
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: callbackUrl(env),
+    redirect_uri: callbackUrl(request),
     client_id: clientId,
     code_verifier: pending.code_verifier,
   });
@@ -151,7 +151,7 @@ export async function finishTelegramLogin(request: Request, env: Env): Promise<R
   ).bind(telegramId).first<{ role: 'reader' | 'editor' | 'admin' }>();
 
   if (!access) {
-    const denied = new URL(appOrigin(env));
+    const denied = new URL(appOrigin(request));
     denied.searchParams.set('auth', 'denied');
     denied.searchParams.set('telegram_id', telegramId);
     return Response.redirect(denied.toString(), 302);
@@ -190,8 +190,8 @@ export async function finishTelegramLogin(request: Request, env: Env): Promise<R
   return new Response(null, {
     status: 302,
     headers: {
-      location: appOrigin(env),
-      'set-cookie': sessionCookie(env, rawSessionToken),
+      location: appOrigin(request),
+      'set-cookie': sessionCookie(request, rawSessionToken),
       'cache-control': 'no-store',
     },
   });
@@ -239,6 +239,6 @@ export async function logout(request: Request, env: Env): Promise<Response> {
   }
   return new Response(null, {
     status: 204,
-    headers: { 'set-cookie': clearSessionCookie(env), 'cache-control': 'no-store' },
+    headers: { 'set-cookie': clearSessionCookie(request), 'cache-control': 'no-store' },
   });
 }
