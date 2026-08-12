@@ -28,15 +28,22 @@ npm run dev
 
 ## Cloudflare
 
-Создать D1 database `domnkrmntredaktor-db`, заменить `REPLACE_WITH_D1_DATABASE_ID` в `wrangler.jsonc`, затем:
+В `wrangler.jsonc` D1 binding оставлен без `database_id`, чтобы современный Wrangler мог автоматически подготовить ресурс при deploy. При желании можно заранее создать `domnkrmntredaktor-db` вручную и вписать его ID.
+
+Production secrets:
 
 ```bash
-npm run db:migrate:remote
 npx wrangler secret put TELEGRAM_CLIENT_ID
 npx wrangler secret put TELEGRAM_CLIENT_SECRET
 npx wrangler secret put SESSION_SECRET
 npx wrangler secret put DRIVE_BRIDGE_URL
 npx wrangler secret put DRIVE_BRIDGE_SECRET
+```
+
+После появления D1 применить миграцию и выполнить deploy:
+
+```bash
+npm run db:migrate:remote
 npm run deploy
 ```
 
