@@ -1,5 +1,16 @@
 export type NavKey = 'home' | 'works' | 'edits' | 'activity' | 'moderation' | 'users' | 'settings' | 'profile';
 
+export type UserRole = 'reader' | 'editor' | 'admin';
+
+export interface AuthUser {
+  id: string;
+  telegramId: string;
+  username: string | null;
+  displayName: string;
+  avatarUrl: string | null;
+  role: UserRole;
+}
+
 export type SuggestionStatus = 'pending' | 'accepted' | 'rejected' | 'stale';
 
 export interface Work {

@@ -9,12 +9,13 @@ import {
   UsersRound,
   X,
 } from 'lucide-react';
-import type { NavKey } from '../types';
+import type { NavKey, UserRole } from '../types';
 import { Brand } from './Brand';
 
 interface SidebarProps {
   active: NavKey;
   onNavigate: (key: NavKey) => void;
+  role?: UserRole;
   overlay?: boolean;
   onClose?: () => void;
 }
@@ -31,7 +32,7 @@ const admin = [
   { key: 'users' as const, label: 'Пользователи', icon: UsersRound },
 ];
 
-export function Sidebar({ active, onNavigate, overlay = false, onClose }: SidebarProps) {
+export function Sidebar({ active, onNavigate, role = 'reader', overlay = false, onClose }: SidebarProps) {
   const navigate = (key: NavKey) => {
     onNavigate(key);
     onClose?.();
@@ -53,12 +54,16 @@ export function Sidebar({ active, onNavigate, overlay = false, onClose }: Sideba
             <Icon size={21} strokeWidth={1.8} /><span>{label}</span>
           </button>
         ))}
-        <div className="sidebar__section-label">Администрирование</div>
-        {admin.map(({ key, label, icon: Icon }) => (
-          <button key={key} className={`nav-item ${active === key ? 'is-active' : ''}`} onClick={() => navigate(key)}>
-            <Icon size={21} strokeWidth={1.8} /><span>{label}</span>
-          </button>
-        ))}
+        {role === 'admin' && (
+          <>
+            <div className="sidebar__section-label">Администрирование</div>
+            {admin.map(({ key, label, icon: Icon }) => (
+              <button key={key} className={`nav-item ${active === key ? 'is-active' : ''}`} onClick={() => navigate(key)}>
+                <Icon size={21} strokeWidth={1.8} /><span>{label}</span>
+              </button>
+            ))}
+          </>
+        )}
       </nav>
       <div className="sidebar__bottom">
         <button className={`nav-item ${active === 'settings' ? 'is-active' : ''}`} onClick={() => navigate('settings')}>
