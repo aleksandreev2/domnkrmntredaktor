@@ -15,6 +15,7 @@
     }
   ],
   "vars": {
-    "APP_ORIGIN": "http://localhost:5173"
+    "APP_ORIGIN": "http://localhost:5173",
+    "TELEGRAM_BOT_USERNAME": "domnekromantabot"
   }
 }
