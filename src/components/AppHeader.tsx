@@ -12,7 +12,9 @@ export function AppHeader({ user, onOpenProfile }: AppHeaderProps) {
     <div className="app-header__actions">
       <button className="icon-button notification-button" aria-label="Уведомления"><Bell size={22} strokeWidth={1.8} /><span /></button>
       <button className="avatar" aria-label={`Профиль ${user.displayName}`} onClick={onOpenProfile}>
-        {user.avatarUrl ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" /> : fallback}
+        {user.avatarUrl
+          ? <img src={user.avatarUrl} alt="" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit' }} />
+          : fallback}
       </button>
     </div>
   );
