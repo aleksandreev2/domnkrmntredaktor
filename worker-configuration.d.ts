@@ -13,6 +13,7 @@ interface D1Database {
 interface Env {
   DB: D1Database;
   APP_ORIGIN: string;
+  TELEGRAM_BOT_USERNAME?: string;
   TELEGRAM_CLIENT_ID?: string;
   TELEGRAM_CLIENT_SECRET?: string;
   SESSION_SECRET?: string;
