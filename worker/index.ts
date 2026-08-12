@@ -1,5 +1,6 @@
 import { beginTelegramLogin, finishTelegramLogin, getSessionUser, isTelegramConfigured, logout } from './auth';
 import { callDriveBridge } from './driveBridge';
+import { syncDrive } from './sync';
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), {
   status,
@@ -72,9 +73,29 @@ export default {
       }
     }
 
+    if (request.method === 'POST' && url.pathname === '/api/admin/sync') {
+      if (user.role !== 'admin') return json({ error: 'Admin access required' }, 403);
+      if (!sameOrigin(request, env)) return json({ error: 'Invalid origin' }, 403);
+      try {
+        return json({ ok: true, stats: await syncDrive(env) });
+      } catch (error) {
+        console.error('Drive sync failed', error);
+        return json({ ok: false, error: error instanceof Error ? error.message : 'Drive sync failed' }, 502);
+      }
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/admin/sync/status') {
+      if (user.role !== 'admin') return json({ error: 'Admin access required' }, 403);
+      const state = await env.DB.prepare("SELECT value, updated_at FROM sync_state WHERE key = 'drive_last_sync'")
+        .first<{ value: string; updated_at: string }>();
+      return json({
+        lastSync: state ? { ...JSON.parse(state.value), persistedAt: state.updated_at } : null,
+      });
+    }
+
     if (request.method === 'GET' && url.pathname === '/api/works') {
       const { results } = await env.DB.prepare(
-        'SELECT id, slug, title, description, author, translator, source_folder_id, created_at, updated_at FROM works WHERE is_archived = 0 ORDER BY title',
+        'SELECT id, slug, title, description, author, translator, source_folder_id, cover_url, created_at, updated_at FROM works WHERE is_archived = 0 ORDER BY title',
       ).all();
       return json({ works: results });
     }
@@ -83,9 +104,24 @@ export default {
     if (request.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'works' && parts[3] === 'chapters') {
       const workId = parts[2];
       const { results } = await env.DB.prepare(
-        'SELECT id, work_id, chapter_number, title, source_file_id, source_format, source_hash, source_modified_at, status FROM chapters WHERE work_id = ? ORDER BY chapter_number',
+        "SELECT id, work_id, chapter_number, title, source_file_id, source_format, source_hash, source_modified_at, status FROM chapters WHERE work_id = ? AND status != 'hidden' ORDER BY chapter_number",
       ).bind(workId).all();
       return json({ chapters: results });
+    }
+
+    if (request.method === 'GET' && parts.length === 3 && parts[0] === 'api' && parts[1] === 'chapters') {
+      const chapterId = parts[2];
+      const chapter = await env.DB.prepare(`
+        SELECT c.id, c.work_id, c.chapter_number, c.title, c.source_format, c.source_hash,
+               c.source_modified_at, c.normalized_text, c.status, w.title AS work_title,
+               (SELECT cv.id FROM chapter_versions cv
+                WHERE cv.chapter_id = c.id AND cv.source_hash = c.source_hash
+                ORDER BY cv.created_at DESC LIMIT 1) AS current_version_id
+        FROM chapters c
+        JOIN works w ON w.id = c.work_id
+        WHERE c.id = ? AND c.status != 'hidden' AND w.is_archived = 0
+      `).bind(chapterId).first();
+      return chapter ? json({ chapter }) : json({ error: 'Chapter not found' }, 404);
     }
 
     if (request.method === 'GET' && url.pathname === '/api/moderation/suggestions') {
