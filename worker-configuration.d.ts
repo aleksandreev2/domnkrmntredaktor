@@ -15,6 +15,7 @@ interface Env {
   TELEGRAM_BOT_USERNAME?: string;
   TELEGRAM_CLIENT_ID?: string;
   TELEGRAM_CLIENT_SECRET?: string;
+  BOOTSTRAP_ADMIN_TELEGRAM_ID?: string;
   SESSION_SECRET?: string;
   DRIVE_BRIDGE_URL?: string;
   DRIVE_BRIDGE_SECRET?: string;
