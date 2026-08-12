@@ -146,9 +146,22 @@ export async function finishTelegramLogin(request: Request, env: Env): Promise<R
   const telegramId = String(claims.id ?? claims.sub ?? '');
   if (!telegramId) return new Response('Telegram ID is missing', { status: 502 });
 
-  const access = await env.DB.prepare(
+  let access = await env.DB.prepare(
     'SELECT role FROM access_list WHERE telegram_id = ? AND is_enabled = 1',
   ).bind(telegramId).first<{ role: 'reader' | 'editor' | 'admin' }>();
+
+  if (!access && env.BOOTSTRAP_ADMIN_TELEGRAM_ID && telegramId === env.BOOTSTRAP_ADMIN_TELEGRAM_ID.trim()) {
+    await env.DB.prepare(`
+      INSERT INTO access_list (telegram_id, role, note, is_enabled, updated_at)
+      VALUES (?, 'admin', 'Initial bootstrap administrator', 1, CURRENT_TIMESTAMP)
+      ON CONFLICT(telegram_id) DO UPDATE SET
+        role = 'admin',
+        is_enabled = 1,
+        note = 'Initial bootstrap administrator',
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(telegramId).run();
+    access = { role: 'admin' };
+  }
 
   if (!access) {
     const denied = new URL(appOrigin(request));
