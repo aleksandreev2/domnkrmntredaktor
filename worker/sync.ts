@@ -82,7 +82,7 @@ export async function syncDrive(env: Env): Promise<SyncStats> {
   await env.DB.prepare('UPDATE works SET is_archived = 1, updated_at = CURRENT_TIMESTAMP').run();
 
   for (const driveWork of works) {
-    const currentWorkId = workId(driveWork.id);
+    const proposedWorkId = workId(driveWork.id);
     await env.DB.prepare(`
       INSERT INTO works (id, slug, title, source_folder_id, is_archived, updated_at)
       VALUES (?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
@@ -90,19 +90,23 @@ export async function syncDrive(env: Env): Promise<SyncStats> {
         title = excluded.title,
         is_archived = 0,
         updated_at = CURRENT_TIMESTAMP
-    `).bind(currentWorkId, stableWorkSlug(driveWork.id), driveWork.name, driveWork.id).run();
+    `).bind(proposedWorkId, stableWorkSlug(driveWork.id), driveWork.name, driveWork.id).run();
+
+    const persistedWork = await env.DB.prepare('SELECT id FROM works WHERE source_folder_id = ?')
+      .bind(driveWork.id).first<{ id: string }>();
+    const currentWorkId = persistedWork?.id ?? proposedWorkId;
 
     const chapterFiles = await callDriveBridge<DriveChapterMeta[]>(env, 'listChapters', { workFolderId: driveWork.id });
     const seenFileIds: string[] = [];
 
     for (const meta of chapterFiles) {
       stats.chaptersSeen += 1;
-      seenFileIds.push(meta.id);
       const chapterNumber = parseChapterNumber(meta.name);
       if (chapterNumber === null) {
         stats.skipped.push({ fileId: meta.id, fileName: meta.name, reason: 'Не удалось определить номер главы из имени файла' });
         continue;
       }
+      seenFileIds.push(meta.id);
 
       let existing = await env.DB.prepare(
         'SELECT id, source_file_id, source_hash, source_modified_at FROM chapters WHERE source_file_id = ?',
