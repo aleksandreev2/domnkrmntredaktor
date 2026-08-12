@@ -14,7 +14,11 @@
       "migrations_dir": "migrations"
     }
   ],
+  "secrets": {
+    "required": ["TELEGRAM_CLIENT_SECRET"]
+  },
   "vars": {
-    "TELEGRAM_BOT_USERNAME": "domnekromantabot"
+    "TELEGRAM_BOT_USERNAME": "domnekromantabot",
+    "TELEGRAM_CLIENT_ID": "8679009127"
   }
 }
