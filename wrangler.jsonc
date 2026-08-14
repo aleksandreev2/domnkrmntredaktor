@@ -18,7 +18,7 @@
     "required": ["TELEGRAM_CLIENT_SECRET"]
   },
   "vars": {
-    "TELEGRAM_BOT_USERNAME": "domnekromantabot",
+    "TELEGRAM_BOT_USERNAME": "domnekromanta_bot",
     "TELEGRAM_CLIENT_ID": "8679009127"
   }
 }
