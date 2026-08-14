@@ -107,7 +107,12 @@ export function Dashboard({ user, onOpenWork, onOpenProfile }: DashboardProps) {
         <section className="card updates-card">
           <div className="section-title-row"><h2>Недавно обновлено</h2></div>
           {works.slice(0, 4).map((work) => (
-            <button className="update-row" key={work.id} onClick={() => onOpenWork(work.id)}>
+            <button
+              className="update-row"
+              key={work.id}
+              onClick={() => onOpenWork(work.id)}
+              style={{ width: '100%', borderTop: 0, borderLeft: 0, borderRight: 0, background: 'transparent', textAlign: 'left', cursor: 'pointer' }}
+            >
               <div
                 className="cover cover--thumb"
                 style={work.cover_url ? { backgroundImage: `url(${work.cover_url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}
