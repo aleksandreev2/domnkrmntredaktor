@@ -99,18 +99,67 @@ export default {
     }
 
     if (request.method === 'GET' && url.pathname === '/api/works') {
-      const { results } = await env.DB.prepare(
-        'SELECT id, slug, title, description, author, translator, source_folder_id, cover_url, created_at, updated_at FROM works WHERE is_archived = 0 ORDER BY title',
-      ).all();
+      const { results } = await env.DB.prepare(`
+        SELECT w.id, w.slug, w.title, w.description, w.author, w.translator, w.cover_url,
+               COUNT(c.id) AS chapters,
+               COALESCE(SUM(CASE WHEN c.status = 'verified' THEN 1 ELSE 0 END), 0) AS verified_chapters,
+               COALESCE(ROUND(AVG(COALESCE(rp.progress_percent, 0))), 0) AS reading_progress,
+               MAX(COALESCE(c.source_modified_at, w.updated_at)) AS last_updated_at
+        FROM works w
+        LEFT JOIN chapters c ON c.work_id = w.id AND c.status != 'hidden'
+        LEFT JOIN reading_progress rp ON rp.chapter_id = c.id AND rp.user_id = ?
+        WHERE w.is_archived = 0
+        GROUP BY w.id, w.slug, w.title, w.description, w.author, w.translator, w.cover_url
+        ORDER BY last_updated_at DESC, w.title
+      `).bind(user.id).all();
       return json({ works: results });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/me/stats') {
+      const row = await env.DB.prepare(`
+        SELECT COUNT(*) AS submitted,
+               COALESCE(SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END), 0) AS accepted,
+               COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) AS pending
+        FROM suggestions
+        WHERE user_id = ?
+      `).bind(user.id).first<{ submitted: number; accepted: number; pending: number }>();
+      return json({
+        submitted: Number(row?.submitted ?? 0),
+        accepted: Number(row?.accepted ?? 0),
+        pending: Number(row?.pending ?? 0),
+      });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/activity') {
+      const { results } = await env.DB.prepare(`
+        SELECT a.id, a.event_type, a.created_at,
+               u.telegram_username, u.display_name,
+               w.title AS work_title,
+               c.chapter_number, c.title AS chapter_title
+        FROM activity a
+        LEFT JOIN users u ON u.id = a.user_id
+        LEFT JOIN works w ON w.id = a.work_id
+        LEFT JOIN chapters c ON c.id = a.chapter_id
+        ORDER BY a.created_at DESC
+        LIMIT 20
+      `).all();
+      return json({ activity: results });
     }
 
     const parts = routeParts(url.pathname);
     if (request.method === 'GET' && parts.length === 4 && parts[0] === 'api' && parts[1] === 'works' && parts[3] === 'chapters') {
       const workId = parts[2];
-      const { results } = await env.DB.prepare(
-        "SELECT id, work_id, chapter_number, title, source_file_id, source_format, source_hash, source_modified_at, status FROM chapters WHERE work_id = ? AND status != 'hidden' ORDER BY chapter_number",
-      ).bind(workId).all();
+      const { results } = await env.DB.prepare(`
+        SELECT c.id, c.work_id, c.chapter_number, c.title, c.source_format, c.source_modified_at,
+               c.status, c.updated_at,
+               COALESCE(rp.progress_percent, 0) AS progress_percent,
+               (SELECT COUNT(*) FROM suggestions s
+                WHERE s.chapter_id = c.id AND s.status IN ('pending', 'accepted')) AS suggestion_count
+        FROM chapters c
+        LEFT JOIN reading_progress rp ON rp.chapter_id = c.id AND rp.user_id = ?
+        WHERE c.work_id = ? AND c.status != 'hidden'
+        ORDER BY c.chapter_number
+      `).bind(user.id, workId).all();
       return json({ chapters: results });
     }
 
@@ -118,15 +167,57 @@ export default {
       const chapterId = parts[2];
       const chapter = await env.DB.prepare(`
         SELECT c.id, c.work_id, c.chapter_number, c.title, c.source_format, c.source_hash,
-               c.source_modified_at, c.normalized_text, c.status, w.title AS work_title,
+               c.source_modified_at, c.normalized_text, c.status, c.updated_at,
+               w.title AS work_title,
+               COALESCE(rp.progress_percent, 0) AS progress_percent,
+               (SELECT COUNT(*) FROM suggestions s
+                WHERE s.chapter_id = c.id AND s.status IN ('pending', 'accepted')) AS suggestion_count,
                (SELECT cv.id FROM chapter_versions cv
                 WHERE cv.chapter_id = c.id AND cv.source_hash = c.source_hash
                 ORDER BY cv.created_at DESC LIMIT 1) AS current_version_id
         FROM chapters c
         JOIN works w ON w.id = c.work_id
+        LEFT JOIN reading_progress rp ON rp.chapter_id = c.id AND rp.user_id = ?
         WHERE c.id = ? AND c.status != 'hidden' AND w.is_archived = 0
-      `).bind(chapterId).first();
+      `).bind(user.id, chapterId).first();
       return chapter ? json({ chapter }) : json({ error: 'Chapter not found' }, 404);
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/reading-progress') {
+      if (!sameOrigin(request)) return json({ error: 'Invalid origin' }, 403);
+      const body = await request.json().catch(() => null) as null | {
+        chapterId?: string;
+        progressPercent?: number;
+        scrollAnchor?: string;
+      };
+      if (!body?.chapterId || !Number.isInteger(body.progressPercent) || (body.progressPercent ?? -1) < 0 || (body.progressPercent ?? 101) > 100) {
+        return json({ error: 'Invalid reading progress' }, 400);
+      }
+      if ((body.scrollAnchor?.length ?? 0) > 500) return json({ error: 'Scroll anchor is too large' }, 413);
+
+      const visibleChapter = await env.DB.prepare(`
+        SELECT c.id
+        FROM chapters c
+        JOIN works w ON w.id = c.work_id
+        WHERE c.id = ? AND c.status != 'hidden' AND w.is_archived = 0
+      `).bind(body.chapterId).first<{ id: string }>();
+      if (!visibleChapter) return json({ error: 'Chapter not found' }, 404);
+
+      const progressPercent = body.progressPercent as number;
+      const completedAt = progressPercent === 100 ? new Date().toISOString() : null;
+      await env.DB.prepare(`
+        INSERT INTO reading_progress (user_id, chapter_id, progress_percent, scroll_anchor, completed_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, chapter_id) DO UPDATE SET
+          progress_percent = excluded.progress_percent,
+          scroll_anchor = excluded.scroll_anchor,
+          completed_at = CASE
+            WHEN excluded.progress_percent = 100 THEN COALESCE(reading_progress.completed_at, excluded.completed_at)
+            ELSE NULL
+          END,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(user.id, body.chapterId, progressPercent, body.scrollAnchor ?? '', completedAt).run();
+      return json({ ok: true });
     }
 
     if (request.method === 'GET' && url.pathname === '/api/moderation/suggestions') {
@@ -174,7 +265,8 @@ export default {
       }
 
       const version = await env.DB.prepare(`
-        SELECT cv.normalized_text AS version_text, cv.source_hash AS version_hash, c.source_hash AS current_hash
+        SELECT cv.normalized_text AS version_text, cv.source_hash AS version_hash,
+               c.source_hash AS current_hash, c.work_id
         FROM chapter_versions cv
         JOIN chapters c ON c.id = cv.chapter_id
         WHERE cv.id = ? AND c.id = ?
@@ -182,6 +274,7 @@ export default {
         version_text: string;
         version_hash: string;
         current_hash: string;
+        work_id: string;
       }>();
       if (!version) return json({ error: 'Chapter version not found' }, 404);
 
@@ -210,6 +303,18 @@ export default {
         body.suggestedText,
         body.comment ?? '',
         status,
+      ).run();
+
+      await env.DB.prepare(`
+        INSERT INTO activity (id, user_id, work_id, chapter_id, suggestion_id, event_type, payload_json)
+        VALUES (?, ?, ?, ?, ?, 'suggestion_created', ?)
+      `).bind(
+        crypto.randomUUID(),
+        user.id,
+        version.work_id,
+        body.chapterId,
+        suggestionId,
+        JSON.stringify({ category: body.category, status }),
       ).run();
 
       return json({ id: suggestionId, status }, 201);
