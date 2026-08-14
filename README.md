@@ -32,25 +32,34 @@ npm run dev
 
 ## Telegram Login
 
-Бот платформы: `@domnekromantabot`.
+Бот платформы: `@domnekromanta_bot`.
 
-В `@BotFather` открыть **Bot Settings → Web Login** и после первого production deploy добавить:
+Telegram Login здесь работает через официальный OIDC Authorization Code Flow + PKCE. Для подключения бота:
 
-- origin сайта, например `https://<workers-domain>`;
-- callback `https://<workers-domain>/api/auth/callback`.
+1. Выполнить первый production deploy и получить HTTPS origin Worker.
+2. В `@BotFather` открыть **Bot Settings → Web Login** именно для `@domnekromanta_bot`.
+3. Добавить Allowed URLs:
+   - `https://<workers-domain>`
+   - `https://<workers-domain>/api/auth/callback`
+4. Скопировать выданные BotFather `Client ID` и `Client Secret`.
+5. Сверить `Client ID` со значением `TELEGRAM_CLIENT_ID` в `wrangler.jsonc`. Если отличается — заменить значение в `wrangler.jsonc` на Client ID этого бота.
+6. `Client Secret` сохранить только в Cloudflare secret:
 
-BotFather выдаст `Client ID` и `Client Secret`. `Client Secret` не коммитить.
+```bash
+npx wrangler secret put TELEGRAM_CLIENT_SECRET
+```
 
-Для локальной разработки добавить локальный origin/callback, если BotFather разрешает используемый dev URL, либо использовать production callback.
+`Client Secret` и bot token не коммитить.
+
+Для локальной разработки добавить значения `TELEGRAM_CLIENT_ID` и `TELEGRAM_CLIENT_SECRET` в `.dev.vars`.
 
 ## Cloudflare
 
 В `wrangler.jsonc` D1 binding оставлен без `database_id`, чтобы современный Wrangler мог автоматически подготовить ресурс при deploy. При желании можно заранее создать `domnkrmntredaktor-db` вручную и вписать его ID.
 
-Production secrets:
+Production secrets для полного приложения:
 
 ```bash
-npx wrangler secret put TELEGRAM_CLIENT_ID
 npx wrangler secret put TELEGRAM_CLIENT_SECRET
 npx wrangler secret put DRIVE_BRIDGE_URL
 npx wrangler secret put DRIVE_BRIDGE_SECRET
