@@ -28,7 +28,7 @@ export default function App() {
     loading: true,
     user: null,
     configured: false,
-    botUsername: 'domnekromantabot',
+    botUsername: 'domnekromanta_bot',
     error: null,
   });
 
@@ -52,7 +52,7 @@ export default function App() {
             loading: false,
             user,
             configured: Boolean(config.configured),
-            botUsername: config.botUsername || 'domnekromantabot',
+            botUsername: config.botUsername || 'domnekromanta_bot',
             error: null,
           });
         }
