@@ -20,6 +20,12 @@ function proofState(chapter: ApiChapter): keyof typeof proofLabel {
   return 'unread';
 }
 
+function displayChapterTitle(chapter: ApiChapter): string {
+  return /^(глава|chapter)\b/i.test(chapter.title)
+    ? chapter.title
+    : `Глава ${chapter.chapter_number}. ${chapter.title}`;
+}
+
 function formatUpdated(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
@@ -158,7 +164,7 @@ export function WorkDetail({ workId, onResolveWork, onRead }: WorkDetailProps) {
             const editState = proofState(chapter);
             return (
               <div className={`chapter-row ${readState === 'reading' ? 'is-current' : ''}`} key={chapter.id}>
-                <strong>Глава {chapter.chapter_number}. {chapter.title}</strong>
+                <strong>{displayChapterTitle(chapter)}</strong>
                 <span className={`chapter-state chapter-state--${readState}`}>{readState === 'unread' ? <Circle size={15} /> : <CheckCircle2 size={15} />}{readingLabel[readState]}</span>
                 <span className={`chapter-state chapter-state--${editState}`}>{editState === 'unread' ? <Circle size={15} /> : <CheckCircle2 size={15} />}{proofLabel[editState]}</span>
                 <span><MessageCircle size={15} /> {chapter.suggestion_count}</span>
