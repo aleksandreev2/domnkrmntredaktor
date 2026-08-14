@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AppHeader } from './components/AppHeader';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './pages/Dashboard';
@@ -22,6 +22,8 @@ type AuthState = {
 export default function App() {
   const [view, setView] = useState<View>('home');
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [auth, setAuth] = useState<AuthState>({
     loading: true,
     user: null,
@@ -69,6 +71,10 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
+  const resolveWork = useCallback((workId: string) => {
+    setSelectedWorkId((current) => current === workId ? current : workId);
+  }, []);
+
   if (auth.loading) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', color: '#77746d' }}>
@@ -97,10 +103,25 @@ export default function App() {
     setView(key);
   };
 
+  const openWork = (workId: string) => {
+    setSelectedWorkId(workId);
+    setView('works');
+  };
+
+  const openChapter = (chapterId: string) => {
+    setSelectedChapterId(chapterId);
+    setView('reader');
+  };
+
   if (view === 'reader') {
     return (
       <>
-        <Reader onBack={() => setView('works')} onOpenMenu={() => setDrawerOpen(true)} />
+        <Reader
+          chapterId={selectedChapterId}
+          onBack={() => setView('works')}
+          onOpenMenu={() => setDrawerOpen(true)}
+          onOpenChapter={openChapter}
+        />
         {drawerOpen && (
           <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)}>
             <div onClick={(event) => event.stopPropagation()}>
@@ -117,8 +138,8 @@ export default function App() {
       <Sidebar active={view as NavKey} role={auth.user.role} onNavigate={navigate} />
       <div className="app-content">
         <AppHeader user={auth.user} onOpenProfile={() => setView('profile')} />
-        {view === 'home' && <Dashboard onOpenWork={() => setView('works')} onOpenProfile={() => setView('profile')} />}
-        {view === 'works' && <WorkDetail onRead={() => setView('reader')} />}
+        {view === 'home' && <Dashboard user={auth.user} onOpenWork={openWork} onOpenProfile={() => setView('profile')} />}
+        {view === 'works' && <WorkDetail workId={selectedWorkId} onResolveWork={resolveWork} onRead={openChapter} />}
         {view === 'moderation' && auth.user.role === 'admin' && <Moderation />}
         {view === 'profile' && <Profile />}
         {!['home', 'works', 'moderation', 'profile'].includes(view) && (
