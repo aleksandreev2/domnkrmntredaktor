@@ -23,26 +23,48 @@ type ParagraphSegment = {
   start: number;
 };
 
-function paragraphSegments(source: string): ParagraphSegment[] {
-  const text = source.replace(/\r\n/g, '\n');
-  const blocks = text.split(/\n{2,}/);
-  const result: ParagraphSegment[] = [];
-  let cursor = 0;
+function trimmedSegment(source: string, start: number): ParagraphSegment | null {
+  const leading = source.match(/^\s*/)?.[0].length ?? 0;
+  const trailing = source.match(/\s*$/)?.[0].length ?? 0;
+  const end = Math.max(leading, source.length - trailing);
+  const text = source.slice(leading, end);
+  return text ? { text, start: start + leading } : null;
+}
 
-  for (const block of blocks) {
-    const foundAt = text.indexOf(block, cursor);
-    const trimmed = block.trim();
-    if (trimmed) {
-      const trimOffset = block.indexOf(trimmed);
-      result.push({ text: trimmed, start: Math.max(0, foundAt) + Math.max(0, trimOffset) });
-    }
-    cursor = Math.max(cursor, Math.max(0, foundAt) + block.length);
+function paragraphSegments(source: string): ParagraphSegment[] {
+  const result: ParagraphSegment[] = [];
+  const separator = /\r?\n[\t ]*\r?\n/g;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = separator.exec(source)) !== null) {
+    const segment = trimmedSegment(source.slice(cursor, match.index), cursor);
+    if (segment) result.push(segment);
+    cursor = match.index + match[0].length;
   }
+  const tail = trimmedSegment(source.slice(cursor), cursor);
+  if (tail) result.push(tail);
+
+  // Some translation files store one paragraph per line without blank separators.
+  // Preserve positions in the original string rather than normalizing line endings.
+  if (result.length <= 1 && /[\r\n]/.test(source)) {
+    const lines: ParagraphSegment[] = [];
+    const linePattern = /[^\r\n]+/g;
+    let line: RegExpExecArray | null;
+    while ((line = linePattern.exec(source)) !== null) {
+      const segment = trimmedSegment(line[0], line.index);
+      if (segment) lines.push(segment);
+    }
+    if (lines.length > 1) return lines;
+  }
+
   return result;
 }
 
 function chapterTitle(chapter: ApiChapterDetail): string {
-  return `Глава ${chapter.chapter_number}. ${chapter.title}`;
+  return /^(глава|chapter)\b/i.test(chapter.title)
+    ? chapter.title
+    : `Глава ${chapter.chapter_number}. ${chapter.title}`;
 }
 
 export function Reader({ chapterId, onBack, onOpenMenu, onOpenChapter }: ReaderProps) {
@@ -98,6 +120,11 @@ export function Reader({ chapterId, onBack, onOpenMenu, onOpenChapter }: ReaderP
     let highest = Number(chapter.progress_percent || 0);
     let saveTimer: number | undefined;
 
+    const restoreTimer = window.setTimeout(() => {
+      const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.scrollTo({ top: Math.round(maxScroll * (highest / 100)), behavior: 'auto' });
+    }, 0);
+
     const updateProgress = () => {
       const root = document.documentElement;
       const maxScroll = Math.max(0, root.scrollHeight - window.innerHeight);
@@ -113,10 +140,9 @@ export function Reader({ chapterId, onBack, onOpenMenu, onOpenChapter }: ReaderP
     };
 
     window.addEventListener('scroll', updateProgress, { passive: true });
-    const initialTimer = window.setTimeout(updateProgress, 100);
     return () => {
       window.removeEventListener('scroll', updateProgress);
-      window.clearTimeout(initialTimer);
+      window.clearTimeout(restoreTimer);
       if (saveTimer) window.clearTimeout(saveTimer);
       void editorApi.saveReadingProgress(chapterId, highest, String(Math.round(window.scrollY))).catch(() => undefined);
     };
